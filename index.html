@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TypeFlip — Fix mistyped language instantly</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080810;
+      --surface:   #0f0f1c;
+      --card:      rgba(255,255,255,0.028);
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #5b5bd6;
+      --accent2:   #9b5de5;
+      --text:      #dcdce8;
+      --muted:     rgba(220,220,232,0.35);
+      --dim:       rgba(220,220,232,0.15);
+      --glow:      rgba(91,91,214,0.22);
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'Syne', 'Noto Sans Thai', sans-serif;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Background Mesh ─────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 15% 10%, rgba(91,91,214,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 85% 80%, rgba(155,93,229,0.09) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(91,91,214,0.05) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Noise texture ───────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.4;
+      z-index: 0;
+    }
+
+    /* ── Layout ──────────────────────────────────── */
+    #app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 0 16px 80px;
+    }
+
+    /* ── Header ──────────────────────────────────── */
+    header {
+      width: 100%;
+      max-width: 720px;
+      padding-top: 52px;
+      padding-bottom: 8px;
+      text-align: center;
+    }
+
+    .logo-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .logo-icon {
+      width: 44px; height: 44px;
+      border-radius: 13px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 30px var(--glow), 0 4px 16px rgba(0,0,0,0.4);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .logo-icon::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent 60%);
+      border-radius: inherit;
+    }
+
+    .logo-text {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      background: linear-gradient(135deg, #e8e8f0, #a8a8c0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .tagline {
+      font-size: 13px;
+      color: var(--dim);
+      font-family: var(--mono);
+      letter-spacing: 0.06em;
+      margin-bottom: 0;
+    }
+
+    /* ── Tab Nav ─────────────────────────────────── */
+    nav {
+      display: flex;
+      gap: 2px;
+      background: rgba(255,255,255,0.025);
+      border-radius: 12px;
+      padding: 4px;
+      margin: 28px 0;
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+
+    .tab-btn {
+      padding: 9px 22px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-family: var(--sans);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.01em;
+    }
+
+    .tab-btn:hover { color: var(--text); }
+
+    .tab-btn.active {
+      background: rgba(91,91,214,0.18);
+      color: #9898f0;
+      box-shadow: 0 1px 8px rgba(91,91,214,0.15);
+    }
+
+    /* ── Panel ───────────────────────────────────── */
+    .panel { width: 100%; max-width: 720px; }
+    .panel.hidden { display: none; }
+
+    /* ── Card ────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .card:focus-within {
+      border-color: rgba(91,91,214,0.3);
+    }
+
+    .card-label {
+      font-size: 10px;
+      color: var(--dim);
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .shortcut-hint {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: rgba(91,91,214,0.5);
+      background: rgba(91,91,214,0.08);
+      padding: 3px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(91,91,214,0.15);
+    }
+
+    /* ── Textarea ────────────────────────────────── */
+    textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 20px;
+      font-family: var(--mono);
+      resize: none;
+      line-height: 1.65;
+      letter-spacing: 0.02em;
+      caret-color: var(--accent);
+    }
+
+    textarea::placeholder { color: rgba(220,220,232,0.12); }
+
+    /* ── Divider ─────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 14px 0 12px;
+    }
+
+    /* ── Quick examples ──────────────────────────── */
+    .examples {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .ex-btn {
+      padding: 4px 10px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.025);
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ex-btn:hover {
+      background: rgba(91,91,214,0.1);
+      border-color: rgba(91,91,214,0.2);
+      color: var(--text);
+    }
+
+    /* ── Convert Button ──────────────────────────── */
+    #convert-btn {
+      width: 100%;
+      padding: 15px 0;
+      border-radius: 13px;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--sans);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 24px var(--glow);
+      margin-bottom: 14px;
+      letter-spacing: 0.02em;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #convert-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent 60%);
+      border-radius: inherit;
+    }
+
+    #convert-btn:disabled {
+      background: rgba(255,255,255,0.04);
+      color: var(--dim);
+      box-shadow: none;
+      cursor: default;
+    }
+
+    #convert-btn:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(91,91,214,0.35);
+    }
+
+    #convert-btn:not(:disabled):active { transform: translateY(0); }
+
+    /* ── Result Card ─────────────────────────────── */
+    #result-card {
+      display: none;
+      background: rgba(91,91,214,0.04);
+      border: 1px solid rgba(91,91,214,0.18);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 14px;
+      animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #result-card.visible { display: block; }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .result-label {
+      font-size: 10px;
+      color: rgba(91,91,214,0.55);
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .result-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .result-time {
+      font-size: 10px;
+      color: var(--dim);
+      font-family: var(--mono);
+    }
+
+    .direction-badge {
+      font-size: 10px;
+      color: rgba(91,91,214,0.7);
+      background: rgba(91,91,214,0.1);
+      padding: 3px 9px;
+      border-radius: 5px;
+      font-family: var(--mono);
+      border: 1px solid rgba(91,91,214,0.15);
+    }
+
+    .result-text {
+      font-size: 22px;
+      font-family: 'Noto Sans Thai', 'Syne', sans-serif;
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.65;
+      word-break: break-word;
+      margin-bottom: 14px;
+    }
+
+    .alt-block {
+      display: none;
+      padding-top: 12px;
+      border-top: 1px solid rgba(91,91,214,0.1);
+      margin-top: 4px;
+    }
+
+    .alt-block.visible { display: block; }
+
+    .alt-label {
+      font-size: 10px;
+      color: var(--dim);
+      font-family: var(--mono);
+      margin-bottom: 4px;
+    }
+
+    .alt-text {
+      font-size: 16px;
+      color: var(--muted);
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .action-btn {
+      padding: 9px 16px;
+      border-radius: 9px;
+      border: 1px solid rgba(91,91,214,0.2);
+      background: rgba(91,91,214,0.08);
+      color: #9898f0;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--sans);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .action-btn:hover {
+      background: rgba(91,91,214,0.15);
+      border-color: rgba(91,91,214,0.35);
+    }
+
+    .action-btn.ghost {
+      background: rgba(255,255,255,0.02);
+      border-color: rgba(255,255,255,0.07);
+      color: var(--muted);
+    }
+
+    .action-btn.ghost:hover {
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+    }
+
+    /* ── Keyboard Visual ─────────────────────────── */
+    .keyboard-card {
+      background: rgba(255,255,255,0.01);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 18px;
+      padding: 22px 20px;
+      margin-bottom: 14px;
+    }
+
+    .keyboard-label {
+      font-size: 10px;
+      color: var(--dim);
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    #keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .key-row { display: flex; gap: 5px; }
+    .key-row:nth-child(2) { margin-left: 14px; }
+    .key-row:nth-child(3) { margin-left: 28px; }
+
+    .key {
+      width: 46px; height: 46px;
+      border-radius: 8px;
+      background: linear-gradient(160deg, #1a1a2c, #212135);
+      border: 1px solid rgba(255,255,255,0.055);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04);
+      position: relative;
+    }
+
+    .key.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-color: rgba(91,91,214,0.5);
+      box-shadow: 0 0 18px rgba(91,91,214,0.3), 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .key-th {
+      font-size: 9px;
+      color: rgba(255,255,255,0.3);
+      line-height: 1;
+    }
+
+    .key.active .key-th { color: rgba(255,255,255,0.75); }
+
+    .key-en {
+      font-size: 13px;
+      color: rgba(255,255,255,0.65);
+      font-weight: 600;
+      line-height: 1;
+      margin-top: 3px;
+    }
+
+    .key.active .key-en { color: #fff; }
+
+    /* ── History Panel ───────────────────────────── */
+    #history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-empty {
+      text-align: center;
+      padding: 56px 24px;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 13px;
+      border: 1px dashed rgba(255,255,255,0.05);
+      border-radius: 18px;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-family: var(--mono);
+      transition: border-color 0.2s;
+      animation: slideUp 0.2s ease;
+    }
+
+    .history-item:hover { border-color: rgba(91,91,214,0.2); }
+
+    .hi-input, .hi-output {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .hi-input { color: var(--muted); }
+    .hi-output { color: var(--text); }
+
+    .hi-arrow { color: rgba(91,91,214,0.4); flex-shrink: 0; }
+
+    .hi-badge {
+      font-size: 10px;
+      color: rgba(91,91,214,0.55);
+      background: rgba(91,91,214,0.08);
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      border: 1px solid rgba(91,91,214,0.12);
+    }
+
+    .hi-copy {
+      background: none;
+      border: none;
+      color: var(--dim);
+      cursor: pointer;
+      font-size: 15px;
+      padding: 4px 6px;
+      border-radius: 5px;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+
+    .hi-copy:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+
+    /* ── About Panel ─────────────────────────────── */
+    .about-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px;
+    }
+
+    .about-card h2 {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .about-body {
+      font-size: 14px;
+      line-height: 1.85;
+      color: var(--muted);
+    }
+
+    .about-body p { margin-bottom: 12px; }
+    .about-body strong { color: rgba(255,255,255,0.75); }
+
+    .feature-box {
+      background: rgba(91,91,214,0.05);
+      border: 1px solid rgba(91,91,214,0.12);
+      border-radius: 12px;
+      padding: 18px;
+      margin-top: 18px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 2;
+    }
+
+    .feature-box-label {
+      color: rgba(91,91,214,0.55);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 10px;
+      margin-bottom: 8px;
+    }
+
+    .feature-box-content { color: var(--muted); }
+
+    .roadmap-box {
+      background: rgba(255,160,0,0.04);
+      border: 1px solid rgba(255,160,0,0.1);
+      border-radius: 12px;
+      padding: 18px;
+      margin-top: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 2;
+    }
+
+    .roadmap-box-label {
+      color: rgba(255,160,0,0.55);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 10px;
+      margin-bottom: 8px;
+    }
+
+    .roadmap-box-content { color: var(--muted); }
+
+    /* ── Toast ───────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      background: #12121e;
+      color: var(--text);
+      padding: 11px 22px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-family: var(--mono);
+      letter-spacing: 0.03em;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(91,91,214,0.25);
+      pointer-events: none;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      backdrop-filter: blur(16px);
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast-check {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    /* ── Animations ──────────────────────────────── */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* ── Scrollbar ───────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(91,91,214,0.2); border-radius: 3px; }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 540px) {
+      .key { width: 36px; height: 36px; }
+      .key-en { font-size: 11px; }
+      .key-th { font-size: 8px; }
+      .tab-btn { padding: 8px 14px; font-size: 12px; }
+      header { padding-top: 36px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-wrap">
+      <div class="logo-icon">⌨</div>
+      <span class="logo-text">TypeFlip</span>
+    </div>
+    <p class="tagline">Fix mistyped language instantly.</p>
+  </header>
+
+  <!-- Nav -->
+  <nav>
+    <button class="tab-btn active" onclick="switchTab('convert')" id="tab-convert">Convert</button>
+    <button class="tab-btn" onclick="switchTab('history')" id="tab-history">History (0)</button>
+    <button class="tab-btn" onclick="switchTab('about')" id="tab-about">About</button>
+  </nav>
+
+  <!-- ── Convert Panel ── -->
+  <div class="panel" id="panel-convert">
+
+    <!-- Input -->
+    <div class="card">
+      <div class="card-label">
+        <span>Paste or type mistyped text</span>
+        <span class="shortcut-hint">⌘⇧L to convert</span>
+      </div>
+      <textarea id="input-text" rows="3" placeholder="l;kfhy[vdyo" autofocus></textarea>
+      <div class="divider"></div>
+      <div class="examples" id="examples">
+        <button class="ex-btn" onclick="setExample('l;kfhy[vdyo','สวัสดีครับ')" title="สวัสดีครับ">l;kfhy[vdyo</button>
+        <button class="ex-btn" onclick="setExample('wmpkamlg;hfv\'vpm','ผมกำลังจะพิมพ์')" title="ผมกำลังจะพิมพ์">wmpkamlg;hfv'vpm</button>
+        <button class="ex-btn" onclick="setExample('vk;jb','อาทิตย์')" title="อาทิตย์">vk;jb</button>
+      </div>
+    </div>
+
+    <!-- Button -->
+    <button id="convert-btn" onclick="handleConvert()" disabled>Convert ⏎</button>
+
+    <!-- Result -->
+    <div id="result-card">
+      <div class="result-header">
+        <span class="result-label">Converted Result</span>
+        <div class="result-meta">
+          <span class="result-time" id="result-time"></span>
+          <span class="direction-badge" id="direction-badge">en→th</span>
+        </div>
+      </div>
+      <div class="result-text" id="result-text"></div>
+      <div class="alt-block" id="alt-block">
+        <div class="alt-label">Alternative:</div>
+        <div class="alt-text" id="alt-text"></div>
+      </div>
+      <div class="result-actions">
+        <button class="action-btn" onclick="copyResult()">⎘ Copy Result</button>
+        <button class="action-btn ghost" onclick="reverseConvert()">↺ Reverse</button>
+      </div>
+    </div>
+
+    <!-- Keyboard -->
+    <div class="keyboard-card">
+      <div class="keyboard-label">Kedmanee Layout Map</div>
+      <div id="keyboard"></div>
+    </div>
+
+  </div>
+
+  <!-- ── History Panel ── -->
+  <div class="panel hidden" id="panel-history">
+    <div id="history-list">
+      <div class="history-empty">No conversions yet. Try converting some text!</div>
+    </div>
+  </div>
+
+  <!-- ── About Panel ── -->
+  <div class="panel hidden" id="panel-about">
+    <div class="about-card">
+      <h2>TypeFlip — Web Prototype</h2>
+      <div class="about-body">
+        <p>This is a working prototype of the <strong>TypeFlip</strong> concept — a macOS utility that instantly fixes text typed in the wrong keyboard language.</p>
+        <p><strong>Problem:</strong> Bilingual typists (Thai/English) experience 10–30 wrong-language incidents per day. Each costs ~5–10 seconds of delete-switch-retype, totaling 15–20 hours per year — plus constant mental irritation.</p>
+        <p><strong>Solution:</strong> Highlight → Hotkey → Instant conversion. The engine maps between English QWERTY and Thai Kedmanee layouts with O(n) character mapping, enhanced by character-frequency language detection.</p>
+        <div class="feature-box">
+          <div class="feature-box-label">MVP Features in this Prototype</div>
+          <div class="feature-box-content">
+            ✓ Kedmanee keyboard mapping engine (EN↔TH)<br/>
+            ✓ Auto language detection (character frequency)<br/>
+            ✓ Keyboard shortcut (⌘⇧L)<br/>
+            ✓ Conversion history<br/>
+            ✓ Visual keyboard layout map<br/>
+            ✓ Copy to clipboard<br/>
+            ✓ Sub-millisecond conversion time
+          </div>
+        </div>
+        <div class="roadmap-box">
+          <div class="roadmap-box-label">For Native macOS App (Swift)</div>
+          <div class="roadmap-box-content">
+            → Accessibility API for selected text reading<br/>
+            → Global hotkey via NSEvent<br/>
+            → In-place text replacement<br/>
+            → Menu bar app with SwiftUI<br/>
+            → Auto-detect mode (Phase 2)<br/>
+            → LLM-powered correction (Phase 2)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast">
+  <div class="toast-check">✓</div>
+  <span id="toast-msg"></span>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// TypeFlip — Conversion Engine
+// ══════════════════════════════════════════════════════════════
+
+const EN_TO_TH = {
+  '`':'_','1':'ๅ','2':'/','3':'-','4':'ภ','5':'ถ',
+  '6':'ุ','7':'ึ','8':'ค','9':'ต','0':'จ','-':'ข','=':'ช',
+  '~':'%','!':'+','@':'๑','#':'๒','$':'๓','%':'๔',
+  '^':'ู','&':'฿','*':'๕','(':'๖',')':'๗','_':'๘','+':'๙',
+  'q':'ๆ','w':'ไ','e':'ำ','r':'พ','t':'ะ',
+  'y':'ั','u':'ี','i':'ร','o':'น','p':'ย',
+  '[':'บ',']':'ล','\\':'ฃ',
+  'Q':'๐','W':'"','E':'ฎ','R':'ฑ','T':'ธ',
+  'Y':'ํ','U':'๊','I':'ณ','O':'ฯ','P':'ญ',
+  '{':'ฐ','}':',','|':'ฅ',
+  'a':'ฟ','s':'ห','d':'ก','f':'ด','g':'เ',
+  'h':'้','j':'่','k':'า','l':'ส',';':'ว',"'":'ง',
+  'A':'ฤ','S':'ฆ','D':'ฏ','F':'โ','G':'ฌ',
+  'H':'็','J':'๋','K':'ษ','L':'ศ',':':'ซ','"':'.',
+  'z':'ผ','x':'ป','c':'แ','v':'อ','b':'ิ',
+  'n':'ื','m':'ท',',':'ม','.':'ใ','/':'ฝ',
+  'Z':'(','X':')','C':'ฉ','V':'ฮ','B':'ฺ',
+  'N':'์','M':'?','<':'ฒ','>':'ฬ','?':'ฦ',
+};
+
+const TH_TO_EN = {};
+Object.entries(EN_TO_TH).forEach(([en, th]) => { TH_TO_EN[th] = en; });
+
+function convertText(text, dir) {
+  const map = dir === 'en2th' ? EN_TO_TH : TH_TO_EN;
+  return [...text].map(c => map[c] ?? c).join('');
+}
+
+function detectLang(text) {
+  let th = 0, en = 0, total = 0;
+  for (const c of text) {
+    const code = c.charCodeAt(0);
+    if (code >= 0x0E01 && code <= 0x0E5B) { th++; total++; }
+    else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) { en++; total++; }
+  }
+  if (!total) return 'unknown';
+  if (en / total > 0.7) return 'en';
+  if (th / total > 0.7) return 'th';
+  return 'mixed';
+}
+
+function autoConvert(text) {
+  const lang = detectLang(text);
+  if (lang === 'en') return { result: convertText(text, 'en2th'), direction: 'en→th', lang };
+  if (lang === 'th') return { result: convertText(text, 'th2en'), direction: 'th→en', lang };
+  const toThai = convertText(text, 'en2th');
+  const toEng  = convertText(text, 'th2en');
+  return { result: toThai, alt: toEng, direction: 'auto', lang };
+}
+
+// ── State ──────────────────────────────────────────────────────
+let history = [];
+let lastResult = null;
+let activeTab = 'convert';
+
+// ── DOM refs ───────────────────────────────────────────────────
+const inputEl = document.getElementById('input-text');
+const convertBtn = document.getElementById('convert-btn');
+const resultCard = document.getElementById('result-card');
+const resultText = document.getElementById('result-text');
+const resultTime = document.getElementById('result-time');
+const dirBadge   = document.getElementById('direction-badge');
+const altBlock   = document.getElementById('alt-block');
+const altText    = document.getElementById('alt-text');
+const histList   = document.getElementById('history-list');
+const toastEl    = document.getElementById('toast');
+const toastMsg   = document.getElementById('toast-msg');
+
+// ── Input handler ──────────────────────────────────────────────
+inputEl.addEventListener('input', () => {
+  convertBtn.disabled = !inputEl.value.trim();
+  updateKeyboard(inputEl.value);
+});
+
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleConvert();
+  }
+});
+
+// ── Convert ────────────────────────────────────────────────────
+function handleConvert() {
+  const text = inputEl.value;
+  if (!text.trim()) return;
+
+  const t0 = performance.now();
+  const converted = autoConvert(text);
+  const ms = (performance.now() - t0).toFixed(1);
+
+  lastResult = converted;
+
+  resultText.textContent = converted.result;
+  dirBadge.textContent = converted.direction;
+  resultTime.textContent = ms + 'ms';
+
+  if (converted.alt) {
+    altText.textContent = converted.alt;
+    altBlock.classList.add('visible');
+  } else {
+    altBlock.classList.remove('visible');
+  }
+
+  resultCard.classList.add('visible');
+
+  // Add to history
+  const entry = {
+    input: text,
+    output: converted.result,
+    direction: converted.direction,
+    time: new Date().toLocaleTimeString(),
+  };
+  history.unshift(entry);
+  if (history.length > 50) history.pop();
+  updateHistoryTab();
+  showToast(`Converted ${converted.direction} in ${ms}ms`);
+}
+
+function copyResult() {
+  if (!lastResult) return;
+  navigator.clipboard?.writeText(lastResult.result).then(() => showToast('Copied to clipboard'));
+}
+
+function reverseConvert() {
+  if (!lastResult) return;
+  inputEl.value = lastResult.result;
+  convertBtn.disabled = false;
+  resultCard.classList.remove('visible');
+  lastResult = null;
+  updateKeyboard(inputEl.value);
+}
+
+function setExample(input) {
+  inputEl.value = input;
+  convertBtn.disabled = false;
+  updateKeyboard(input);
+  inputEl.focus();
+}
+
+// ── Keyboard ───────────────────────────────────────────────────
+const KB_ROWS = [
+  ['q','w','e','r','t','y','u','i','o','p'],
+  ['a','s','d','f','g','h','j','k','l',';'],
+  ['z','x','c','v','b','n','m',',','.','/'],
+];
+
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  KB_ROWS.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'key-row';
+    row.forEach(ch => {
+      const key = document.createElement('div');
+      key.className = 'key';
+      key.dataset.char = ch;
+      key.innerHTML = `<span class="key-th">${EN_TO_TH[ch] || ''}</span><span class="key-en">${ch}</span>`;
+      rowEl.appendChild(key);
+    });
+    kb.appendChild(rowEl);
+  });
+}
+
+function updateKeyboard(text) {
+  const chars = new Set(text.toLowerCase().split(''));
+  document.querySelectorAll('.key').forEach(key => {
+    key.classList.toggle('active', chars.has(key.dataset.char));
+  });
+}
+
+buildKeyboard();
+
+// ── Tabs ───────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  ['convert','history','about'].forEach(t => {
+    document.getElementById('panel-' + t).classList.toggle('hidden', t !== tab);
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  });
+}
+
+// ── History ────────────────────────────────────────────────────
+function updateHistoryTab() {
+  document.getElementById('tab-history').textContent = `History (${history.length})`;
+
+  if (history.length === 0) {
+    histList.innerHTML = '<div class="history-empty">No conversions yet. Try converting some text!</div>';
+    return;
+  }
+
+  histList.innerHTML = '';
+  history.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'history-item';
+    el.innerHTML = `
+      <span class="hi-input" title="${esc(item.input)}">${esc(item.input.slice(0,30))}${item.input.length > 30 ? '…' : ''}</span>
+      <span class="hi-arrow">→</span>
+      <span class="hi-output" title="${esc(item.output)}">${esc(item.output.slice(0,30))}${item.output.length > 30 ? '…' : ''}</span>
+      <span class="hi-badge">${esc(item.direction)}</span>
+      <button class="hi-copy" title="Copy" onclick="copyHistItem(${i})">⎘</button>
+    `;
+    histList.appendChild(el);
+  });
+}
+
+function copyHistItem(i) {
+  navigator.clipboard?.writeText(history[i].output).then(() => showToast('Copied to clipboard'));
+}
+
+function esc(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Toast ──────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  toastMsg.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+}
+
+// ── Keyboard Shortcut ──────────────────────────────────────────
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'L') {
+    e.preventDefault();
+    handleConvert();
+  }
+});
+</script>
+</body>
+</html>
